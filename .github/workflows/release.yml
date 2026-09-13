@@ -1,0 +1,185 @@
+name: release
+
+"on":
+  push:
+    branches: [main]
+    tags: ["v[0-9]*.[0-9]*.[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump (auto = from commits, or force patch/minor/major)"
+        required: false
+        default: auto
+        type: choice
+        options: [auto, patch, minor, major]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Verify
+        run: |
+          go vet ./...
+          go test ./... -race
+
+      - name: Determine version
+        id: version
+        env:
+          BUMP_INPUT: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+
+          # Tag push → use the tag directly (compatible with `go install @vX.Y.Z` / @latest).
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            echo "Triggered by tag push: $VERSION"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "is_tag=false" >> "$GITHUB_OUTPUT"
+
+          # Auto-release only on main (workflow_dispatch defaults to main too).
+          # If HEAD already has a semver tag, do nothing — prevents double-release when a tag was just pushed.
+          if git describe --exact-match --match "v[0-9]*.[0-9]*.[0-9]*" HEAD >/dev/null 2>&1; then
+            EXISTING="$(git describe --exact-match --match "v[0-9]*.[0-9]*.[0-9]*" HEAD)"
+            echo "HEAD already tagged as $EXISTING — skipping auto-tag."
+            echo "version=$EXISTING" >> "$GITHUB_OUTPUT"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LATEST="$(git describe --tags --match "v[0-9]*.[0-9]*.[0-9]*" --abbrev=0 2>/dev/null || echo "v0.0.0")"
+          echo "Latest tag: $LATEST"
+
+          VER="${LATEST#v}"
+          # Strip prerelease/build metadata for bumping (e.g. 0.1.0-rc.1 / 0.1.0+build.1 → 0.1.0)
+          VER="${VER%%[-+]*}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VER"
+          MAJOR="${MAJOR:-0}"; MINOR="${MINOR:-0}"; PATCH="${PATCH:-0}"
+
+          # Decide bump: explicit input wins, otherwise infer from commits since LATEST.
+          BUMP="${BUMP_INPUT:-auto}"
+          if [[ "$BUMP" == "auto" || -z "$BUMP" ]]; then
+            RANGE="${LATEST}..HEAD"
+            # If LATEST is v0.0.0 (no prior release), use all commits.
+            if [[ "$LATEST" == "v0.0.0" ]]; then
+              RANGE="HEAD"
+            fi
+            COMMITS="$(git log --pretty=format:"%s%n%b" "$RANGE" 2>/dev/null || true)"
+            echo "Commits in range $RANGE:"
+            echo "$COMMITS"
+
+            if echo "$COMMITS" | grep -qiE "\[skip release\]|\[no release\]"; then
+              echo "Found [skip release] marker — skipping auto-tag."
+              echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if echo "$COMMITS" | grep -qiE "BREAKING[ -]CHANGE|^[a-z]+(\([^)]+\))?!:"; then
+              BUMP="major"
+            elif echo "$COMMITS" | grep -qiE "^feat(\([^)]+\))?:"; then
+              BUMP="minor"
+            else
+              BUMP="patch"
+            fi
+            echo "Inferred bump: $BUMP"
+          else
+            echo "Forced bump: $BUMP"
+          fi
+
+          case "$BUMP" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH+1)) ;;
+            *) echo "Unknown bump: $BUMP"; exit 1 ;;
+          esac
+
+          VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "Next version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag (auto-release)
+        if: steps.version.outputs.is_tag != 'true' && steps.version.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists locally — skipping create."
+          else
+            git tag -a "$VERSION" -m "Release $VERSION"
+          fi
+          if git ls-remote --tags origin "refs/tags/$VERSION" | grep -q "$VERSION"; then
+            echo "Tag $VERSION already exists on origin — skipping push."
+          else
+            git push origin "$VERSION"
+          fi
+
+      - name: Skip — already tagged
+        if: steps.version.outputs.skip == 'true'
+        run: echo "Skipping — HEAD already tagged as ${{ steps.version.outputs.version }}."
+
+      # Build in the same run that creates the tag. Pushes made with GITHUB_TOKEN
+      # do not trigger a second `on.push.tags` workflow run (GitHub loop protection),
+      # so we must build/release here after `git push`. Manual `git push origin vX.Y.Z`
+      # (via PAT/SSH) does trigger `is_tag=true` and also builds via this same step.
+      # Keeps `go install github.com/nya1/listtt@latest` working via semver tags.
+      - name: Build binaries
+        if: steps.version.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "Building $VERSION"
+          mkdir -p dist
+          LDFLAGS="-s -w -X main.version=${VERSION}"
+
+          # Matrix: linux + darwin, amd64 + arm64 (project supports Linux and macOS).
+          for GOOS in linux darwin; do
+            for GOARCH in amd64 arm64; do
+              echo "→ $GOOS/$GOARCH"
+              CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "$LDFLAGS" -o "dist/listtt-${GOOS}-${GOARCH}" .
+            done
+          done
+
+          # Checksums for verification (not required for `go install`, but useful for direct downloads).
+          (cd dist && sha256sum listtt-* > checksums.txt)
+          ls -lh dist/
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            dist/listtt-*
+            dist/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
