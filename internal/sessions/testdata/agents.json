@@ -1,0 +1,7 @@
+[
+  {"id": "1fa22db1", "cwd": "/home/dev/projects/app", "kind": "background", "startedAt": 1787738337209, "sessionId": "1fa22db1-9074-40da-84d9-2c8997a12cfb", "name": "plan upgrade 403 error", "state": "blocked"},
+  {"pid": 413013, "cwd": "/home/dev/projects/app", "kind": "interactive", "startedAt": 1788096015326, "sessionId": "a4b7d8fa-0fe7-4dfb-96cb-4de8dda39dbc", "name": "app-3d", "status": "idle"},
+  {"pid": 1930044, "cwd": "/home/dev/projects/example", "kind": "interactive", "startedAt": 1789000000000, "sessionId": "c2c2c2c2-0000-4000-8000-000000000002", "name": "example-b1", "status": "waiting", "futureField": {"x": 1}},
+  {"pid": 2145726, "cwd": "/home/dev/projects/listtt", "kind": "interactive", "startedAt": 1789247000000, "sessionId": "d3d3d3d3-0000-4000-8000-000000000003", "name": "listtt-4a", "status": "busy"},
+  {"pid": 2200000, "cwd": "/home/dev/projects/nosession", "kind": "interactive", "startedAt": 1789247000001, "name": "broken-entry", "status": "idle"}
+]

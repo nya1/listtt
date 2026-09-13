@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>listtt</title>
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">listtt</div>
+      <div id="counters" class="counters"></div>
+      <input id="search" class="search" type="search" placeholder="Search name, directory, note…" autocomplete="off">
+      <div id="health" class="health-wrap"></div>
+    </header>
+    <aside class="sidebar">
+      <div class="sidebar-title">Groups</div>
+      <ul id="nav" class="nav"></ul>
+      <form id="new-group-form" class="new-group" hidden>
+        <input id="new-group-name" maxlength="60" placeholder="Group name, then Enter" autocomplete="off">
+      </form>
+      <button id="new-group-btn" class="new-group-btn" type="button">+ New group</button>
+    </aside>
+    <main class="main">
+      <table class="table">
+        <thead>
+          <tr>
+            <th class="c-status">Status</th><th class="c-name">Name</th><th class="c-title">Title</th>
+            <th class="c-note">Note</th><th class="c-group">Group</th><th class="c-started">Started</th>
+            <th class="c-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </main>
+  </div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="recap-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header"><span>Recap</span><button type="button" class="icon-btn" data-action="close-recap">×</button></div>
+      <div id="recap-text" class="modal-body"></div>
+    </div>
+  </div>
+</body>
+</html>
