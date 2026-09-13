@@ -5,10 +5,22 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log"
 	"os/exec"
 	"strings"
 	"time"
 )
+
+var debugEnabled bool
+
+// SetDebug enables verbose focus logging to stderr.
+func SetDebug(v bool) { debugEnabled = v }
+
+func debugf(format string, args ...any) {
+	if debugEnabled {
+		log.Printf("listtt: focus: "+format, args...)
+	}
+}
 
 // ErrUnsupported means there is no focus adapter for this platform.
 var ErrUnsupported = errors.New("terminal focus is not supported on this platform")

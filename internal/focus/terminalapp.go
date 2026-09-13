@@ -12,18 +12,22 @@ var macTTY = regexp.MustCompile(`^ttys[0-9]+$`)
 
 // focusScript is the spec §7.4 AppleScript. It is passed to osascript as one
 // -e argument per line. The tty is passed only through argv.
+// Window activation uses `set frontmost to true` (application property) +
+// `set index of w to 1`. The previous `set frontmost of w to true` was
+// invalid (frontmost is not a window property) and caused macOS to restore
+// the last-active window instead of `w`, explaining "opens but wrong window".
 var focusScript = []string{
 	`on run argv`,
 	`  set target to item 1 of argv`,
 	`  tell application "Terminal"`,
+	`    activate`,
 	`    repeat with w in windows`,
 	`      set hits to (tabs of w whose tty is target)`,
 	`      if (count of hits) > 0 then`,
 	`        if miniaturized of w then set miniaturized of w to false`,
 	`        set selected tab of w to item 1 of hits`,
+	`        set frontmost to true`,
 	`        set index of w to 1`,
-	`        set frontmost of w to true`,
-	`        activate`,
 	`        return "ok"`,
 	`      end if`,
 	`    end repeat`,
@@ -43,18 +47,28 @@ func NewTerminalApp() TerminalApp {
 
 func (a TerminalApp) CanFocus(pid int) bool {
 	if !a.hasTerminalAncestor(pid) {
+		debugf("CanFocus pid=%d: no Terminal ancestor", pid)
 		return false
 	}
-	_, err := a.tty(pid)
-	return err == nil
+	tty, err := a.tty(pid)
+	if err != nil {
+		debugf("CanFocus pid=%d: tty error: %v", pid, err)
+		return false
+	}
+	debugf("CanFocus pid=%d: tty=%s ok", pid, tty)
+	return true
 }
 
 func (a TerminalApp) Focus(pid int) error {
 	tty, err := a.tty(pid)
 	if err != nil {
+		debugf("Focus pid=%d: tty error: %v", pid, err)
 		return err
 	}
+	target := "/dev/" + tty
+	debugf("Focus pid=%d: tty=%s target=%s", pid, tty, target)
 	stdout, stderr, err := run(a.Run, "osascript", scriptArgs(tty)...)
+	debugf("Focus pid=%d: osascript err=%v stdout=%q stderr=%q", pid, err, stdout, stderr)
 	if err != nil {
 		return osascriptError(err, stderr)
 	}
@@ -62,7 +76,8 @@ func (a TerminalApp) Focus(pid int) error {
 		return errors.New("Terminal tab not found. It may have been closed.")
 	}
 	// Backstop for macOS 26 focus-stealing prevention (spec §7.4 step 3).
-	_, _, _ = run(a.Run, "open", "-b", "com.apple.Terminal")
+	_, stderr2, err2 := run(a.Run, "open", "-b", "com.apple.Terminal")
+	debugf("Focus pid=%d: open backstop err=%v stderr=%q", pid, err2, stderr2)
 	return nil
 }
 

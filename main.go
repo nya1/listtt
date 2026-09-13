@@ -60,6 +60,7 @@ func run(args []string) error {
 	addr := flags.String("addr", "127.0.0.1:7777", "listen address; the host must be 127.0.0.1 or localhost")
 	openFlag := flags.Bool("open", false, "open the dashboard in the default browser")
 	versionFlag := flags.Bool("version", false, "print version and exit")
+	debugFlag := flags.Bool("debug", false, "verbose focus logging to stderr")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -72,6 +73,14 @@ func run(args []string) error {
 	}
 	if flags.NArg() > 0 {
 		return fmt.Errorf("unexpected arguments: %v", flags.Args())
+	}
+	if os.Getenv("LISTTT_DEBUG") != "" {
+		*debugFlag = true
+	}
+	if *debugFlag {
+		focus.SetDebug(true)
+		log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+		log.Printf("listtt: debug logging enabled")
 	}
 	host, port, err := validateAddr(*addr)
 	if err != nil {

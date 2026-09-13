@@ -30,22 +30,31 @@ func NewGnomeTerminal() GnomeTerminal {
 // GNOME_TERMINAL_SCREEN value in the process environment.
 func (g GnomeTerminal) CanFocus(pid int) bool {
 	if !g.hasGnomeTerminalAncestor(pid) {
+		debugf("CanFocus pid=%d: no gnome-terminal ancestor", pid)
 		return false
 	}
-	_, err := g.screenUUID(pid)
-	return err == nil
+	uuid, err := g.screenUUID(pid)
+	if err != nil {
+		debugf("CanFocus pid=%d: screenUUID error: %v", pid, err)
+		return false
+	}
+	debugf("CanFocus pid=%d: screenUUID=%s ok", pid, uuid)
+	return true
 }
 
 func (g GnomeTerminal) Focus(pid int) error {
 	uuid, err := g.screenUUID(pid)
 	if err != nil {
+		debugf("Focus pid=%d: screenUUID error: %v", pid, err)
 		return err
 	}
+	debugf("Focus pid=%d: screenUUID=%s", pid, uuid)
 	_, stderr, err := run(g.Run, "gdbus", "call", "--session",
 		"--dest", "org.gnome.Terminal",
 		"--object-path", "/org/gnome/Terminal/SearchProvider",
 		"--method", "org.gnome.Shell.SearchProvider2.ActivateResult",
 		"'"+uuid+"'", "[]", "0")
+	debugf("Focus pid=%d: gdbus err=%v stderr=%q", pid, err, stderr)
 	if err != nil {
 		return fmt.Errorf("GNOME Terminal focus failed (%v): %s", err, stderr)
 	}
