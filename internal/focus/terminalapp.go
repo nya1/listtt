@@ -12,26 +12,39 @@ var macTTY = regexp.MustCompile(`^ttys[0-9]+$`)
 
 // focusScript is the spec §7.4 AppleScript. It is passed to osascript as one
 // -e argument per line. The tty is passed only through argv.
-// Both halves of the window raise are load-bearing:
-//   - `activate` must come before the raise. Running it last makes macOS
-//     restore Terminal's own front window, undoing the raise ("wrong window").
-//   - `frontmost` must be scoped to `w`. Terminal's window class has a
+//
+// It returns the tty of the tab that is actually selected when it finishes, not
+// a hardcoded "ok". Focus compares that to the tty it asked for, so a focus that
+// lands on the wrong tab reports itself instead of looking like a success. Three
+// separate wrong diagnoses of this adapter all cost a rebuild-and-eyeball cycle
+// because nothing here could tell a silent failure from a working focus.
+//
+// Two details of the raise are load-bearing:
+//   - `frontmost` must be scoped to a window. Terminal's window class has a
 //     settable `frontmost`; the application's is read-only, so a bare
-//     `set frontmost to true` fails with -10006 and aborts the script before
-//     the window is raised ("right tab selected, but hidden behind").
+//     `set frontmost to true` fails with -10006 and aborts the script before the
+//     window is raised ("right tab selected, but hidden behind").
+//   - The window must be addressed by `id`. `repeat with w in windows` binds `w`
+//     as a positional reference -- `item i of windows`, re-evaluated on every
+//     access -- so once a raise reorders the list, further statements on `w` hit
+//     a different window. `w` is therefore read exactly once, to capture the id,
+//     before even the `whose` query: a `whose` clause inherits the container it
+//     was asked about, so querying through `w` would leave `item 1 of hits`
+//     positional too.
 var focusScript = []string{
 	`on run argv`,
 	`  set target to item 1 of argv`,
 	`  tell application "Terminal"`,
 	`    activate`,
 	`    repeat with w in windows`,
-	`      set hits to (tabs of w whose tty is target)`,
+	`      set wid to id of w`,
+	`      set hits to (tabs of window id wid whose tty is target)`,
 	`      if (count of hits) > 0 then`,
-	`        if miniaturized of w then set miniaturized of w to false`,
-	`        set selected tab of w to item 1 of hits`,
-	`        set frontmost of w to true`,
-	`        set index of w to 1`,
-	`        return "ok"`,
+	`        if miniaturized of window id wid then set miniaturized of window id wid to false`,
+	`        set selected tab of window id wid to item 1 of hits`,
+	`        set index of window id wid to 1`,
+	`        set frontmost of window id wid to true`,
+	`        return (tty of selected tab of window id wid)`,
 	`      end if`,
 	`    end repeat`,
 	`  end tell`,
@@ -75,8 +88,14 @@ func (a TerminalApp) Focus(pid int) error {
 	if err != nil {
 		return osascriptError(err, stderr)
 	}
-	if stdout != "ok" {
+	if stdout == "not found" {
 		return errors.New("Terminal tab not found. It may have been closed.")
+	}
+	// The script returns the tty that is actually selected when it finishes, so
+	// a focus that lands somewhere else reports itself instead of passing as a
+	// success. dashboard.Focus surfaces this text to the user verbatim.
+	if stdout != target {
+		return fmt.Errorf("Terminal focused the wrong tab: asked for %s, got %s.", target, stdout)
 	}
 	// Backstop for macOS 26 focus-stealing prevention (spec §7.4 step 3).
 	_, stderr2, err2 := run(a.Run, "open", "-b", "com.apple.Terminal")

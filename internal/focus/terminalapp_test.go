@@ -3,6 +3,8 @@ package focus
 import (
 	"context"
 	"errors"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -83,7 +85,7 @@ func TestTerminalAppCannotFocusWithoutTTY(t *testing.T) {
 
 func TestTerminalAppFocusPassesTTYOnlyAsArgument(t *testing.T) {
 	f := terminalTree(t)
-	f.osascript = fakeResult{stdout: "ok\n"}
+	f.osascript = fakeResult{stdout: "/dev/ttys003\n"}
 	if err := (TerminalApp{Run: f.run}).Focus(900); err != nil {
 		t.Fatalf("Focus: %v", err)
 	}
@@ -113,14 +115,67 @@ func TestTerminalAppFocusPassesTTYOnlyAsArgument(t *testing.T) {
 // window is raised: the right tab gets selected but stays behind.
 func TestTerminalAppFocusScriptRaisesMatchedWindow(t *testing.T) {
 	script := strings.Join(focusScript, "\n")
-	if !strings.Contains(script, "set frontmost of w to true") {
-		t.Error("script must raise the matched window with `set frontmost of w to true`")
+	if !strings.Contains(script, "set frontmost of window id wid to true") {
+		t.Error("script must raise the matched window with `set frontmost of window id wid to true`")
 	}
 	if strings.Contains(script, "set frontmost to true") {
 		t.Error("`set frontmost to true` sets the read-only application property and fails with -10006")
 	}
 	if strings.Index(script, "activate") > strings.Index(script, "repeat with w in windows") {
 		t.Error("activate must run before the window loop, or macOS restores Terminal's own front window")
+	}
+}
+
+// `repeat with w in windows` binds w positionally -- "item i of windows",
+// re-resolved on every use -- and the raise reorders that list, so a second
+// statement on w silently hits a different window. Reading w exactly once, to
+// capture the id, makes that impossible by construction. The `whose` query is
+// included: it inherits the container it was asked about, so going through w
+// there would leave `item 1 of hits` positional too.
+func TestTerminalAppFocusScriptReadsLoopVariableOnce(t *testing.T) {
+	bareW := regexp.MustCompile(`\bw\b`)
+	var reads []string
+	for _, line := range focusScript {
+		if strings.Contains(line, "repeat with w in windows") || !bareW.MatchString(line) {
+			continue
+		}
+		reads = append(reads, strings.TrimSpace(line))
+	}
+	want := []string{"set wid to id of w"}
+	if !slices.Equal(reads, want) {
+		t.Errorf("lines reading the loop variable = %q, want exactly %q", reads, want)
+	}
+}
+
+// The script must not sleep: the previous round added a 2s activation poll for
+// a race that turned out not to be the cause. Any reintroduced wait has to be
+// re-justified against commandTimeout, which run() applies per invocation.
+func TestTerminalAppFocusScriptDoesNotSleep(t *testing.T) {
+	script := strings.Join(focusScript, "\n")
+	if strings.Contains(script, "delay ") {
+		t.Error("script must not `delay`; it spends the caller's commandTimeout budget")
+	}
+	if regexp.MustCompile(`repeat \d+ times`).MatchString(script) {
+		t.Error("script must not spin a counted repeat loop")
+	}
+}
+
+// Three wrong diagnoses of this adapter each cost a rebuild-and-eyeball cycle
+// because a focus that landed on the wrong tab returned "ok" like any other.
+func TestTerminalAppFocusReportsWrongTab(t *testing.T) {
+	f := terminalTree(t)
+	f.osascript = fakeResult{stdout: "/dev/ttys009\n"}
+	err := (TerminalApp{Run: f.run}).Focus(900)
+	if err == nil {
+		t.Fatal("Focus succeeded despite landing on another tab")
+	}
+	for _, want := range []string{"/dev/ttys003", "/dev/ttys009"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %q, want it to name %s", err, want)
+		}
+	}
+	if len(f.ran("open")) != 0 {
+		t.Error("open must not run when the wrong tab was focused")
 	}
 }
 

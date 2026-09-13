@@ -23,12 +23,28 @@ its terminal tab. It is a single Go binary and supports Linux and macOS.
   `SearchProvider2.ActivateResult` (convert `_` to `-` in the UUID). This was verified
   to raise the window on Wayland.
 - Raising a Terminal.app window needs `activate` **before** the raise, and the raise
-  must be `set frontmost of w to true`. Terminal's *window* class has a settable
-  `frontmost` (the *application*'s is read-only -- a bare `set frontmost to true`
-  fails with -10006). Getting either half wrong looks like a focus bug, not an error:
-  `activate` last makes macOS restore Terminal's own front window; a failed raise
-  leaves the right tab selected but behind another window. Neither half can be
-  verified off-macOS -- the unit tests only assert the script text.
+  must be scoped to a window: Terminal's *window* class has a settable `frontmost`,
+  the *application*'s is read-only, so a bare `set frontmost to true` fails with
+  -10006. Confirmed. Either one wrong looks like a focus bug rather than an error:
+  `activate` last makes macOS restore Terminal's own front window, and a failed raise
+  leaves the right tab selected but behind another window. Nothing here can be
+  verified off-macOS -- the unit tests only assert the script text, so changes to the
+  script need a real click-test on a Mac.
+- `repeat with w in windows` binds `w` **positionally** (`item i of windows`,
+  re-resolved on every access) and the raise reorders that list, so a second statement
+  on `w` silently targets a different window. Read `w` once to capture `id of w`, then
+  address `window id wid` -- including the `whose` query, which inherits the container
+  it was asked about. A `TestTerminalAppFocusScriptReadsLoopVariableOnce` guard
+  enforces this, because the failure is invisible: every statement succeeds.
+- **The focus adapter must verify its own outcome.** The script returns the tty of the
+  tab that is actually selected when it finishes, and `Focus` compares it to the one
+  it asked for. This exists because three separate diagnoses of one wrong-tab report
+  were each wrong, and each cost a rebuild-and-eyeball cycle: the adapter returned a
+  hardcoded `"ok"`, so no layer above it could tell a silent failure from a success.
+  Refuted theories, so they are not tried a fourth time: an `activate`-vs-raise race
+  (Terminal comes forward reliably); the stale positional reference above (real, but
+  needs two windows, and the report came from a single-window setup); and Apple's
+  macOS 26 activation bug FB21087054 (same reason as the first).
 - `claude --resume` keeps the session ID; only `--fork-session` creates a new one.
 - Each session's full transcript is a JSONL file at
   `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`, where `<encoded-cwd>` is
