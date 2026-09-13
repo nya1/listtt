@@ -108,6 +108,22 @@ func TestTerminalAppFocusPassesTTYOnlyAsArgument(t *testing.T) {
 	}
 }
 
+// The application's `frontmost` is read-only, so the application-scope
+// `set frontmost to true` fails with -10006 and aborts the script before the
+// window is raised: the right tab gets selected but stays behind.
+func TestTerminalAppFocusScriptRaisesMatchedWindow(t *testing.T) {
+	script := strings.Join(focusScript, "\n")
+	if !strings.Contains(script, "set frontmost of w to true") {
+		t.Error("script must raise the matched window with `set frontmost of w to true`")
+	}
+	if strings.Contains(script, "set frontmost to true") {
+		t.Error("`set frontmost to true` sets the read-only application property and fails with -10006")
+	}
+	if strings.Index(script, "activate") > strings.Index(script, "repeat with w in windows") {
+		t.Error("activate must run before the window loop, or macOS restores Terminal's own front window")
+	}
+}
+
 func TestTerminalAppFocusTabNotFound(t *testing.T) {
 	f := terminalTree(t)
 	f.osascript = fakeResult{stdout: "not found\n"}

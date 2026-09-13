@@ -12,10 +12,13 @@ var macTTY = regexp.MustCompile(`^ttys[0-9]+$`)
 
 // focusScript is the spec §7.4 AppleScript. It is passed to osascript as one
 // -e argument per line. The tty is passed only through argv.
-// Window activation uses `set frontmost to true` (application property) +
-// `set index of w to 1`. The previous `set frontmost of w to true` was
-// invalid (frontmost is not a window property) and caused macOS to restore
-// the last-active window instead of `w`, explaining "opens but wrong window".
+// Both halves of the window raise are load-bearing:
+//   - `activate` must come before the raise. Running it last makes macOS
+//     restore Terminal's own front window, undoing the raise ("wrong window").
+//   - `frontmost` must be scoped to `w`. Terminal's window class has a
+//     settable `frontmost`; the application's is read-only, so a bare
+//     `set frontmost to true` fails with -10006 and aborts the script before
+//     the window is raised ("right tab selected, but hidden behind").
 var focusScript = []string{
 	`on run argv`,
 	`  set target to item 1 of argv`,
@@ -26,7 +29,7 @@ var focusScript = []string{
 	`      if (count of hits) > 0 then`,
 	`        if miniaturized of w then set miniaturized of w to false`,
 	`        set selected tab of w to item 1 of hits`,
-	`        set frontmost to true`,
+	`        set frontmost of w to true`,
 	`        set index of w to 1`,
 	`        return "ok"`,
 	`      end if`,

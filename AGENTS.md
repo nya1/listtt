@@ -22,6 +22,13 @@ its terminal tab. It is a single Go binary and supports Linux and macOS.
   `GNOME_TERMINAL_SCREEN` environment variable, then focus the tab with
   `SearchProvider2.ActivateResult` (convert `_` to `-` in the UUID). This was verified
   to raise the window on Wayland.
+- Raising a Terminal.app window needs `activate` **before** the raise, and the raise
+  must be `set frontmost of w to true`. Terminal's *window* class has a settable
+  `frontmost` (the *application*'s is read-only -- a bare `set frontmost to true`
+  fails with -10006). Getting either half wrong looks like a focus bug, not an error:
+  `activate` last makes macOS restore Terminal's own front window; a failed raise
+  leaves the right tab selected but behind another window. Neither half can be
+  verified off-macOS -- the unit tests only assert the script text.
 - `claude --resume` keeps the session ID; only `--fork-session` creates a new one.
 - Each session's full transcript is a JSONL file at
   `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`, where `<encoded-cwd>` is
