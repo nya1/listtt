@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"listtt/internal/dashboard"
+	"github.com/nya1/listtt/internal/dashboard"
 )
 
 const port = "7777"

@@ -28,13 +28,28 @@ It's a single Go binary with a plain HTML/CSS/JS frontend — no database, no ac
 - Go 1.25 or later, to build.
 - Linux or macOS.
 
-## Build and run
+## Install
+
+requires Go 1.25+:
+
+```bash
+go install github.com/nya1/listtt@latest
+listtt --open            # serves http://127.0.0.1:7777/ and opens your browser
+```
+
+Make sure `$(go env GOPATH)/bin` (or `~/go/bin`) is on your `PATH`.
+
+To update: `go install github.com/nya1/listtt@latest` again.
+
+## Build and run (from source)
 
 ```bash
 go build -o listtt .
 ./listtt --open            # serves http://127.0.0.1:7777/ and opens your browser
 ./listtt --addr localhost:8080
 ```
+
+Custom version string: `go build -ldflags "-X main.version=v0.1.0" -o listtt .`
 
 `--addr` only accepts `127.0.0.1` or `localhost`, because the dashboard has no login — anyone who can reach the address can see and control your sessions.
 

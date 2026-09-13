@@ -13,19 +13,34 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"syscall"
 	"time"
 
-	"listtt/internal/dashboard"
-	"listtt/internal/focus"
-	"listtt/internal/recap"
-	"listtt/internal/sessions"
-	"listtt/internal/store"
-	"listtt/internal/web"
+	"github.com/nya1/listtt/internal/dashboard"
+	"github.com/nya1/listtt/internal/focus"
+	"github.com/nya1/listtt/internal/recap"
+	"github.com/nya1/listtt/internal/sessions"
+	"github.com/nya1/listtt/internal/store"
+	"github.com/nya1/listtt/internal/web"
 )
 
 const pollInterval = 3 * time.Second
+
+// version is set at build time via -ldflags "-X main.version=...".
+// When installed via `go install @latest`, Go embeds the module version via
+// runtime/debug.ReadBuildInfo, so we fall back to that when version is still "dev".
+var version = "dev"
+
+func init() {
+	if version != "" && version != "dev" {
+		return
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		version = info.Main.Version
+	}
+}
 
 const banner = `█     █████  ████ █████ █████ █████
 █       █   █       █     █     █
@@ -44,11 +59,16 @@ func run(args []string) error {
 	flags := flag.NewFlagSet("listtt", flag.ContinueOnError)
 	addr := flags.String("addr", "127.0.0.1:7777", "listen address; the host must be 127.0.0.1 or localhost")
 	openFlag := flags.Bool("open", false, "open the dashboard in the default browser")
+	versionFlag := flags.Bool("version", false, "print version and exit")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
+	}
+	if *versionFlag {
+		fmt.Println(version) // GNU-style: --version ignores other flags/args
+		return nil
 	}
 	if flags.NArg() > 0 {
 		return fmt.Errorf("unexpected arguments: %v", flags.Args())
@@ -94,7 +114,7 @@ func run(args []string) error {
 	}
 	url := "http://" + net.JoinHostPort(host, port) + "/"
 	fmt.Println(banner)
-	log.Printf("listtt: dashboard at %s (store: %s)", url, path)
+	log.Printf("listtt %s: dashboard at %s (store: %s)", version, url, path)
 	if *openFlag {
 		if err := openBrowser(url); err != nil {
 			log.Printf("listtt: could not open the browser: %v", err)

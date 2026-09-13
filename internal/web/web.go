@@ -9,7 +9,7 @@ import (
 	"mime"
 	"net/http"
 
-	"listtt/internal/dashboard"
+	"github.com/nya1/listtt/internal/dashboard"
 )
 
 //go:embed static

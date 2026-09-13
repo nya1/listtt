@@ -41,3 +41,22 @@ func TestRunRejectsExtraArguments(t *testing.T) {
 		t.Fatal("expected an error for unexpected arguments")
 	}
 }
+
+func TestRunVersionFlag(t *testing.T) {
+	if err := run([]string{"--version"}); err != nil {
+		t.Fatalf("--version err = %v", err)
+	}
+	if err := run([]string{"-version"}); err != nil {
+		t.Fatalf("-version err = %v", err)
+	}
+}
+
+func TestRunVersionIgnoresOtherFlags(t *testing.T) {
+	// GNU-style: --version short-circuits before validation
+	if err := run([]string{"--version", "--addr", "0.0.0.0:7777"}); err != nil {
+		t.Fatalf("--version with bad addr err = %v", err)
+	}
+	if err := run([]string{"--version", "extra"}); err != nil {
+		t.Fatalf("--version with extra arg err = %v", err)
+	}
+}

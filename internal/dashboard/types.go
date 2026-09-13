@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"listtt/internal/store"
+	"github.com/nya1/listtt/internal/store"
 )
 
 type State string

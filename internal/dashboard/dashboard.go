@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"listtt/internal/sessions"
-	"listtt/internal/store"
+	"github.com/nya1/listtt/internal/sessions"
+	"github.com/nya1/listtt/internal/store"
 )
 
 const (
