@@ -8,6 +8,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
+    --accent: #b48cf2;
     --bg: #16151b; --surface: #1d1c23; --surface-2: #25242d; --border: #34333e;
     --text: #e8e7ee; --muted: #9a99a8; --row-hover: #27222f;
     --amber: #f2b441; --amber-bg: #3a2d0f; --blue: #6ea4f5; --blue-bg: #172a4b;
