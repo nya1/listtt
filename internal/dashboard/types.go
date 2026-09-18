@@ -12,13 +12,17 @@ import (
 type State string
 
 const (
-	StateWaiting  State = "waiting"
-	StateBusy     State = "busy"
-	StateIdle     State = "idle"
-	StateOther    State = "other"
-	StateEnded    State = "ended"
-	StateArchived State = "archived"
+	StateWaiting State = "waiting"
+	StateBusy    State = "busy"
+	StateIdle    State = "idle"
+	StateOther   State = "other"
+	StateEnded   State = "ended"
 )
+
+// archivedGroupID is a reserved pseudo-group id, like "" means "Ungrouped".
+// It is never stored in store.Data.Groups; Dashboard always synthesizes it
+// into every snapshot instead, so archiving works without a store migration.
+const archivedGroupID = "archived"
 
 type GroupView struct {
 	ID   string `json:"id"`

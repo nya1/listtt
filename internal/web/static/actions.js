@@ -129,7 +129,46 @@ export function installActions({ state, render }) {
         }
         break;
       }
+      case 'select-row': {
+        e.preventDefault(); // ui.selected + render() own the checkbox's checked state
+        const id = el.dataset.id;
+        let range = null;
+        if (e.shiftKey && ui.selectAnchor) {
+          const ids = Array.from(document.querySelectorAll('#rows tr.session-row')).map((r) => r.dataset.id);
+          const from = ids.indexOf(ui.selectAnchor);
+          const to = ids.indexOf(id);
+          if (from !== -1 && to !== -1) range = ids.slice(...(from < to ? [from, to + 1] : [to, from + 1]));
+        }
+        if (range) {
+          for (const rid of range) ui.selected.add(rid);
+        } else if (ui.selected.has(id)) {
+          ui.selected.delete(id);
+        } else {
+          ui.selected.add(id);
+        }
+        ui.selectAnchor = id;
+        render();
+        break;
+      }
+      case 'clear-selection':
+        ui.selected.clear();
+        ui.selectAnchor = null;
+        render();
+        break;
     }
+  });
+
+  // Bulk move: the selection toolbar's "Move to…" select.
+  document.addEventListener('change', async (e) => {
+    const bulk = e.target.closest?.('select.bulk-move');
+    if (!bulk) return;
+    const groupId = bulk.value;
+    const ids = [...ui.selected];
+    bulk.blur();
+    await Promise.all(ids.map((id) => attempt(api('PATCH', sessionPath(id), { groupId }))));
+    ui.selected.clear();
+    ui.selectAnchor = null;
+    render();
   });
 
   // Moving with the keyboard-accessible select.

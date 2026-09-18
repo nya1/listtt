@@ -51,6 +51,12 @@ type Dashboard struct {
 }
 
 func New(data store.Data, persist Persister, focus Focuser, recap Recapper, now func() time.Time) *Dashboard {
+	if groups, renamed := renameConflictingArchivedGroups(data.Groups); renamed {
+		data.Groups = groups
+		if err := persist.Save(data); err != nil {
+			log.Printf("listtt: renaming pre-existing %q group failed, will retry on next save: %v", "Archived", err)
+		}
+	}
 	return &Dashboard{
 		data:       data,
 		persist:    persist,
@@ -121,6 +127,17 @@ func (d *Dashboard) ApplyPoll(list []sessions.Session, pollErr error, now time.T
 		}
 	}
 
+	for id, rec := range d.data.Sessions {
+		if rec.EndedAt == nil || rec.GroupID == archivedGroupID || rec.ArchiveExempt {
+			continue
+		}
+		if now.Sub(rec.LastSeenAt) >= archiveAfter {
+			rec.GroupID = archivedGroupID
+			d.data.Sessions[id] = rec
+			changed = true
+		}
+	}
+
 	if changed || d.unsaved || (len(list) > 0 && now.Sub(d.lastSaved) >= lastSeenPersistEvery) {
 		d.saveLocked(now)
 	}
@@ -157,23 +174,21 @@ func (d *Dashboard) snapshotLocked() Snapshot {
 	for _, g := range d.data.Groups {
 		snap.Groups = append(snap.Groups, GroupView{ID: g.ID, Name: g.Name})
 	}
+	snap.Groups = append(snap.Groups, GroupView{ID: archivedGroupID, Name: "Archived"})
 	for id, rec := range d.data.Sessions {
-		snap.Sessions = append(snap.Sessions, d.viewLocked(id, rec, now))
+		snap.Sessions = append(snap.Sessions, d.viewLocked(id, rec))
 	}
 	sort.Slice(snap.Sessions, func(i, j int) bool { return snap.Sessions[i].ID < snap.Sessions[j].ID })
 	return snap
 }
 
-func (d *Dashboard) viewLocked(id string, rec store.SessionRecord, now time.Time) SessionView {
+func (d *Dashboard) viewLocked(id string, rec store.SessionRecord) SessionView {
 	v := SessionView{ID: id, Name: rec.Name, Cwd: rec.Cwd, GroupID: rec.GroupID, Note: rec.Note, Recap: rec.Recap, Title: rec.Title,
 		StartedAt: rec.StartedAt, LastSeenAt: rec.LastSeenAt}
 	if rec.EndedAt != nil {
 		ended := *rec.EndedAt
 		v.EndedAt = &ended
 		v.State = StateEnded
-		if now.Sub(rec.LastSeenAt) >= archiveAfter {
-			v.State = StateArchived
-		}
 		return v
 	}
 	info, ok := d.live[id]

@@ -4,6 +4,8 @@ Local, full-screen web dashboard that lists Claude Code sessions. Users can grou
 sessions, add notes, see which sessions need input, and click a session to focus
 its terminal tab. It is a single Go binary and supports Linux and macOS.
 
+Published as a public GitHub repo: https://github.com/nya1/listtt
+
 - Toolchain: Go 1.25.
 - Dependencies: standard library only unless there is a strong reason.
 

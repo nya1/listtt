@@ -64,7 +64,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 .table th { position: sticky; top: 0; z-index: 1; height: 32px; padding: 0 10px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); }
 .table td { height: 32px; padding: 0 10px; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
-.c-status { width: 190px; } .c-name { width: 200px; } .c-title { width: 260px; } .c-group { width: 160px; } .c-started { width: 100px; } .c-actions { width: 240px; }
+.c-select { width: 28px; } .c-status { width: 190px; } .c-name { width: 200px; } .c-title { width: 260px; } .c-group { width: 160px; } .c-started { width: 100px; } .c-actions { width: 240px; }
 .session-row { background: var(--surface); }
 .session-row:hover { background: var(--row-hover); }
 .session-row.can-focus { cursor: pointer; }
@@ -75,7 +75,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .pill.st-waiting { background: var(--amber-bg); color: var(--amber); }
 .pill.st-busy { background: var(--blue-bg); color: var(--blue); }
 .pill.st-idle { background: var(--grey-bg); color: var(--grey); }
-.pill.st-ended, .pill.st-archived { border: 1px solid var(--border); color: var(--muted); }
+.pill.st-ended { border: 1px solid var(--border); color: var(--muted); }
 .badge { margin-left: 8px; font-weight: 600; color: var(--amber); }
 .note-cell { cursor: text; }
 .note-editor { display: block; width: 100%; min-height: 64px; margin: 4px 0; padding: 4px 6px; resize: vertical; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-2); }
@@ -86,6 +86,10 @@ tr:has(.note-editor) td { vertical-align: top; padding-top: 6px; }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
 .btn-danger:hover { border-color: var(--red); color: var(--red); }
 .empty-row td { height: 64px; text-align: center; color: var(--muted); }
+
+.selection-bar { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.selection-bar:empty { display: none; }
+.selection-bar .bulk-move { height: 24px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); }
 
 .toasts { position: fixed; right: 16px; bottom: 16px; z-index: 10; display: flex; flex-direction: column; gap: 8px; }
 .toast { max-width: 440px; padding: 10px 14px; border-radius: 4px; background: var(--text); color: var(--bg); box-shadow: 0 4px 16px rgba(0, 0, 0, .25); white-space: pre-wrap; }
@@ -101,3 +105,20 @@ tr:has(.note-editor) td { vertical-align: top; padding-top: 6px; }
 .is-dragging { opacity: .45; }
 li.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; }
 tr.drop-target > td { background: var(--row-hover); }
+
+/* Multi-row drag ghost: a small stack of cards trailing the cursor, one per
+   dragged session, so it's clear what's being moved. Rendered off-screen --
+   only used as a snapshot source for dataTransfer.setDragImage. */
+.drag-ghost { position: fixed; top: -1000px; left: -1000px; }
+.drag-ghost-card {
+  position: absolute; top: calc(var(--i) * 4px); left: calc(var(--i) * 4px);
+  z-index: calc(10 - var(--i));
+  min-width: 120px; max-width: 220px; padding: 5px 10px;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--surface); color: var(--text);
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .2);
+  transform: rotate(calc(var(--i) * 1.5deg - 1.5deg));
+  opacity: .92;
+}
+.drag-ghost-more { color: var(--muted); font-style: italic; }

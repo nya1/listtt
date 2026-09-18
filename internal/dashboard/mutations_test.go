@@ -33,7 +33,7 @@ func TestCreateGroupValidatesName(t *testing.T) {
 	if _, err := d.CreateGroup(strings.Repeat("é", 60)); err != nil {
 		t.Errorf("60-character name rejected: %v", err)
 	}
-	for _, bad := range []string{"", "   ", strings.Repeat("a", 61), "FRONTEND"} {
+	for _, bad := range []string{"", "   ", strings.Repeat("a", 61), "FRONTEND", "archived", "ARCHIVED"} {
 		if _, err := d.CreateGroup(bad); kindOf(err) != KindValidation {
 			t.Errorf("CreateGroup(%q) err = %v, want validation error", bad, err)
 		}
@@ -41,8 +41,8 @@ func TestCreateGroupValidatesName(t *testing.T) {
 	if len(st.saves) != 2 {
 		t.Errorf("saves = %d, want 2 (only successful creates)", len(st.saves))
 	}
-	if n := len(d.Snapshot().Groups); n != 2 {
-		t.Errorf("groups = %d, want 2", n)
+	if n := len(d.Snapshot().Groups); n != 3 { // + the synthesized Archived group
+		t.Errorf("groups = %d, want 3", n)
 	}
 }
 
@@ -74,7 +74,7 @@ func TestDeleteGroupMovesSessionsToUngrouped(t *testing.T) {
 		t.Fatalf("DeleteGroup: %v", err)
 	}
 	snap := d.Snapshot()
-	if len(snap.Groups) != 0 || findView(t, snap, "s1").GroupID != "" {
+	if len(snap.Groups) != 1 || findView(t, snap, "s1").GroupID != "" { // just the synthesized Archived group
 		t.Errorf("snapshot = %+v", snap)
 	}
 	if err := d.DeleteGroup(g.ID); kindOf(err) != KindNotFound {
@@ -125,7 +125,7 @@ func TestDeleteSessionOnlyArchived(t *testing.T) {
 	if err := d.DeleteSession("s1"); kindOf(err) != KindConflict {
 		t.Errorf("delete ended: err = %v, want conflict", err)
 	}
-	c.t = t0.Add(7 * 24 * time.Hour)
+	d.ApplyPoll(nil, nil, t0.Add(7*24*time.Hour)) // triggers the auto-archive sweep
 	if err := d.DeleteSession("s1"); err != nil {
 		t.Fatalf("delete archived: %v", err)
 	}
@@ -134,6 +134,18 @@ func TestDeleteSessionOnlyArchived(t *testing.T) {
 	}
 	if err := d.DeleteSession("s1"); kindOf(err) != KindNotFound {
 		t.Errorf("delete again: err = %v, want not found", err)
+	}
+}
+
+func TestDeleteSessionRejectsLiveSessionInArchivedGroup(t *testing.T) {
+	d, _, _, c := newTestDashboard(store.Empty())
+	d.ApplyPoll([]sessions.Session{sess("s1", 101, "idle")}, nil, c.now())
+	archived := archivedGroupID
+	if _, err := d.UpdateSession("s1", &archived, nil); err != nil {
+		t.Fatalf("UpdateSession: %v", err)
+	}
+	if err := d.DeleteSession("s1"); kindOf(err) != KindConflict {
+		t.Errorf("delete live session in Archived: err = %v, want conflict", err)
 	}
 }
 
@@ -149,7 +161,7 @@ func TestStoreFailureRollsBackMutation(t *testing.T) {
 		t.Fatalf("err = %v, want store error", err)
 	}
 	snap := d.Snapshot()
-	if len(snap.Groups) != 0 || findView(t, snap, "s1").Note != "" {
+	if len(snap.Groups) != 1 || findView(t, snap, "s1").Note != "" { // just the synthesized Archived group
 		t.Fatalf("mutations not rolled back: %+v", snap)
 	}
 
@@ -190,7 +202,7 @@ func TestMutationBroadcasts(t *testing.T) {
 	if _, err := d.CreateGroup("G"); err != nil {
 		t.Fatal(err)
 	}
-	if got := <-ch; len(got.Groups) != 1 {
+	if got := <-ch; len(got.Groups) != 2 { // the new group + the synthesized Archived group
 		t.Errorf("broadcast snapshot = %+v", got)
 	}
 }

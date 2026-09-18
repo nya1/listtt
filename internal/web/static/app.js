@@ -1,19 +1,21 @@
 // app.js: state, the live event stream, render orchestration, and navigation.
 import { installActions } from './actions.js';
 import { installDnD } from './dnd.js';
-import { counts, renderCounters, renderHealth, renderRows, renderSidebar } from './render.js';
+import { counts, renderCounters, renderHealth, renderRows, renderSelectionBar, renderSidebar } from './render.js';
 
 export const state = {
   snap: { groups: [], sessions: [], lastPollAt: null, pollError: null, home: '' },
   connected: false,
   ui: {
-    view: 'all',            // 'all' | 'ungrouped' | 'archived' | group id
-    status: null,           // null | 'waiting' | 'busy' | 'idle' | 'ended'
+    view: 'all',                    // 'all' | 'ungrouped' | 'archived' | group id
+    status: null,                   // null | 'waiting' | 'busy' | 'idle' | 'ended'
     search: '',
-    collapsed: new Set(),   // group ids ('' = Ungrouped) collapsed in the All view
-    editingNote: null,      // session id whose note editor is open
-    renaming: null,         // group id being renamed in the sidebar
-    dragging: false,        // true while a row is being dragged (Task 11)
+    collapsed: new Set(['archived']), // group ids ('' = Ungrouped) collapsed in the All view; Archived starts collapsed
+    editingNote: null,              // session id whose note editor is open
+    renaming: null,                 // group id being renamed in the sidebar
+    dragging: false,                // true while a row is being dragged (Task 11)
+    selected: new Set(),            // session ids selected via checkboxes
+    selectAnchor: null,             // last clicked session id, for shift-click range selection
   },
 };
 
@@ -22,12 +24,18 @@ const $ = (id) => document.getElementById(id);
 export function render() {
   const { snap, ui } = state;
   if (ui.dragging) return; // dnd.js calls render() again when the drag ends
-  if (!['all', 'ungrouped', 'archived'].includes(ui.view) && !snap.groups.some((g) => g.id === ui.view)) {
+  if (!['all', 'ungrouped'].includes(ui.view) && !snap.groups.some((g) => g.id === ui.view)) {
     ui.view = 'all';
+    ui.selected.clear();
+    ui.selectAnchor = null;
   }
+  // Drop selections for sessions that no longer exist (ended-session cleanup, etc).
+  const liveIds = new Set(snap.sessions.map((s) => s.id));
+  for (const id of ui.selected) if (!liveIds.has(id)) ui.selected.delete(id);
   const now = Date.now();
   $('counters').innerHTML = renderCounters(counts(snap.sessions), ui.status);
   $('health').innerHTML = renderHealth(snap, state.connected, now);
+  $('selection-bar').innerHTML = renderSelectionBar(snap, ui);
   if (!ui.renaming) $('nav').innerHTML = renderSidebar(snap, ui);
 
   const rows = $('rows');
@@ -81,6 +89,8 @@ document.addEventListener('click', (e) => {
     case 'select-view':
       if (e.target.closest('.nav-tools, .nav-rename')) return;
       ui.view = el.dataset.view;
+      ui.selected.clear();
+      ui.selectAnchor = null;
       render();
       break;
     case 'filter-status':

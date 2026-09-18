@@ -3,6 +3,7 @@ package dashboard
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -18,6 +19,32 @@ func newGroupID() string {
 	b := make([]byte, 8)
 	rand.Read(b) // crypto/rand.Read never fails on supported platforms (Go 1.24+ crashes instead)
 	return "g_" + hex.EncodeToString(b)
+}
+
+// renameConflictingArchivedGroups renames any real, pre-existing group named
+// "Archived" (case-insensitive). CreateGroup/RenameGroup block that name
+// going forward, but a store saved before "archived" became reserved could
+// already have one, which would otherwise look like a duplicate of the
+// synthesized Archived pseudo-group in the sidebar and move dropdowns.
+func renameConflictingArchivedGroups(groups []store.Group) (out []store.Group, renamed bool) {
+	used := make(map[string]bool, len(groups))
+	for _, g := range groups {
+		used[strings.ToLower(g.Name)] = true
+	}
+	for i := range groups {
+		if !strings.EqualFold(groups[i].Name, "archived") {
+			continue
+		}
+		delete(used, strings.ToLower(groups[i].Name))
+		candidate := groups[i].Name + " (old)"
+		for n := 2; used[strings.ToLower(candidate)]; n++ {
+			candidate = fmt.Sprintf("%s (old %d)", groups[i].Name, n)
+		}
+		used[strings.ToLower(candidate)] = true
+		groups[i].Name = candidate
+		renamed = true
+	}
+	return groups, renamed
 }
 
 // mutateLocked runs fn, saves, and broadcasts. If fn or the save fails, the
@@ -51,6 +78,9 @@ func (d *Dashboard) cleanGroupNameLocked(name, exceptID string) (string, error) 
 	name = strings.TrimSpace(name)
 	if n := utf8.RuneCountInString(name); n < 1 || n > maxGroupNameLen {
 		return "", errorf(KindValidation, "group name must be 1–%d characters", maxGroupNameLen)
+	}
+	if strings.EqualFold(name, "archived") {
+		return "", errorf(KindValidation, "%q is reserved", name)
 	}
 	for _, g := range d.data.Groups {
 		if g.ID != exceptID && strings.EqualFold(g.Name, name) {
@@ -130,8 +160,11 @@ func (d *Dashboard) UpdateSession(id string, groupID, note *string) (SessionView
 			return errorf(KindNotFound, "session not found")
 		}
 		if groupID != nil {
-			if *groupID != "" && d.groupIndexLocked(*groupID) < 0 {
+			if *groupID != "" && *groupID != archivedGroupID && d.groupIndexLocked(*groupID) < 0 {
 				return errorf(KindValidation, "group not found")
+			}
+			if rec.GroupID == archivedGroupID && *groupID != archivedGroupID {
+				rec.ArchiveExempt = true
 			}
 			rec.GroupID = *groupID
 		}
@@ -147,7 +180,7 @@ func (d *Dashboard) UpdateSession(id string, groupID, note *string) (SessionView
 	if err != nil {
 		return SessionView{}, err
 	}
-	return d.viewLocked(id, d.data.Sessions[id], d.now()), nil
+	return d.viewLocked(id, d.data.Sessions[id]), nil
 }
 
 func (d *Dashboard) DeleteSession(id string) error {
@@ -158,7 +191,7 @@ func (d *Dashboard) DeleteSession(id string) error {
 		if !ok {
 			return errorf(KindNotFound, "session not found")
 		}
-		if d.viewLocked(id, rec, d.now()).State != StateArchived {
+		if rec.GroupID != archivedGroupID || rec.EndedAt == nil {
 			return errorf(KindConflict, "only archived sessions can be deleted")
 		}
 		delete(d.data.Sessions, id)
@@ -174,7 +207,7 @@ func (d *Dashboard) Focus(id string) error {
 	var pid int
 	var can bool
 	if ok {
-		can = d.viewLocked(id, rec, d.now()).CanFocus
+		can = d.viewLocked(id, rec).CanFocus
 		pid = d.live[id].pid
 	}
 	d.mu.Unlock()

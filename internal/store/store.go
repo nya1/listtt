@@ -21,16 +21,17 @@ type Group struct {
 }
 
 type SessionRecord struct {
-	GroupID     string     `json:"groupId"`
-	Note        string     `json:"note"`
-	Name        string     `json:"name"`
-	Cwd         string     `json:"cwd"`
-	Recap       string     `json:"recap"`
-	Title       string     `json:"title"`
-	StartedAt   time.Time  `json:"startedAt"`
-	FirstSeenAt time.Time  `json:"firstSeenAt"`
-	LastSeenAt  time.Time  `json:"lastSeenAt"`
-	EndedAt     *time.Time `json:"endedAt"`
+	GroupID       string     `json:"groupId"`
+	Note          string     `json:"note"`
+	Name          string     `json:"name"`
+	Cwd           string     `json:"cwd"`
+	Recap         string     `json:"recap"`
+	Title         string     `json:"title"`
+	StartedAt     time.Time  `json:"startedAt"`
+	FirstSeenAt   time.Time  `json:"firstSeenAt"`
+	LastSeenAt    time.Time  `json:"lastSeenAt"`
+	EndedAt       *time.Time `json:"endedAt"`
+	ArchiveExempt bool       `json:"archiveExempt,omitempty"`
 }
 
 type Data struct {

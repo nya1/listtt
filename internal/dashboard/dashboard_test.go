@@ -170,13 +170,57 @@ func TestArchivedAtSevenDays(t *testing.T) {
 	d.ApplyPoll(nil, nil, c.add(3*time.Second))
 	d.ApplyPoll(nil, nil, c.add(3*time.Second))
 
-	c.t = t0.Add(7*24*time.Hour - time.Second)
-	if s := findView(t, d.Snapshot(), "s1").State; s != StateEnded {
-		t.Errorf("just before 7 days: state = %q, want ended", s)
+	d.ApplyPoll(nil, nil, t0.Add(7*24*time.Hour-time.Second))
+	if g := findView(t, d.Snapshot(), "s1").GroupID; g != "" {
+		t.Errorf("just before 7 days: groupId = %q, want ungrouped", g)
 	}
-	c.t = t0.Add(7 * 24 * time.Hour)
-	if s := findView(t, d.Snapshot(), "s1").State; s != StateArchived {
-		t.Errorf("at 7 days: state = %q, want archived", s)
+	d.ApplyPoll(nil, nil, t0.Add(7*24*time.Hour))
+	if g := findView(t, d.Snapshot(), "s1").GroupID; g != archivedGroupID {
+		t.Errorf("at 7 days: groupId = %q, want archived", g)
+	}
+}
+
+func TestManualUnarchiveIsExemptFromReArchiving(t *testing.T) {
+	d, _, _, c := newTestDashboard(store.Empty())
+	d.ApplyPoll([]sessions.Session{sess("s1", 101, "idle")}, nil, c.now())
+	d.ApplyPoll(nil, nil, c.add(3*time.Second))
+	d.ApplyPoll(nil, nil, c.add(3*time.Second))
+	d.ApplyPoll(nil, nil, t0.Add(7*24*time.Hour))
+	if g := findView(t, d.Snapshot(), "s1").GroupID; g != archivedGroupID {
+		t.Fatalf("groupId = %q, want archived", g)
+	}
+
+	empty := ""
+	if _, err := d.UpdateSession("s1", &empty, nil); err != nil {
+		t.Fatalf("UpdateSession: %v", err)
+	}
+	d.ApplyPoll(nil, nil, t0.Add(30*24*time.Hour))
+	if g := findView(t, d.Snapshot(), "s1").GroupID; g != "" {
+		t.Errorf("groupId after re-poll = %q, want it to stay ungrouped (exempt)", g)
+	}
+}
+
+func TestPreExistingArchivedGroupIsRenamedOnLoad(t *testing.T) {
+	data := store.Empty()
+	data.Groups = []store.Group{{ID: "g1", Name: "Archived", CreatedAt: t0}, {ID: "g2", Name: "archived (old)", CreatedAt: t0}}
+	st := &fakeStore{}
+	d := New(data, st, &fakeFocus{can: map[int]bool{}, calls: map[int]int{}}, &fakeRecap{}, (&clock{t: t0}).now)
+
+	snap := d.Snapshot()
+	var names []string
+	for _, g := range snap.Groups {
+		names = append(names, g.Name)
+	}
+	if len(snap.Groups) != 3 { // g1 renamed, g2 untouched, + the synthesized Archived
+		t.Fatalf("groups = %+v", names)
+	}
+	for _, g := range snap.Groups {
+		if g.ID == "g1" && strings.EqualFold(g.Name, "archived") {
+			t.Errorf("g1 still named %q, want it renamed away from the reserved name", g.Name)
+		}
+	}
+	if len(st.saves) != 1 {
+		t.Errorf("saves = %d, want 1 (the rename persisted immediately)", len(st.saves))
 	}
 }
 
