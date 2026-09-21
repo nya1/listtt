@@ -6,6 +6,10 @@ If you run several Claude Code sessions across different terminals and projects,
 
 It's a single Go binary with a plain HTML/CSS/JS frontend — no database, no accounts, no network calls beyond your own machine.
 
+<p align="center">
+  <img src="docs/images/screenshot.png" alt="listtt dashboard listing several Claude Code sessions, grouped and flagged by status" width="800">
+</p>
+
 ## Table of contents
 
 - [Features](#features)
